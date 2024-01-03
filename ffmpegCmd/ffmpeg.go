@@ -23,7 +23,7 @@ func StartRtmpStream() error {
 		"-b:v", "900k",
 		"-c:a", "aac",
 		"-strict", "experimental",
-		"-f", "fvlv",
+		"-f", "flv",
 		"rtmp://192.168.0.221:1935/live")
 
 	stopCh := make(chan struct{})
@@ -38,7 +38,6 @@ func StartRtmpStream() error {
 			if errors.As(err, &exitErr) {
 				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
 					// Handle the exit status if needed
-					err.Error()
 
 					log.Printf("Exit status: %d\n", status.ExitStatus())
 				}
