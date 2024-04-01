@@ -24,35 +24,38 @@ func Main() {
 	}
 	rtmpStream := router.Group("/rtmpStream")
 	{
-		rtmpStream.GET("/startStream", func(c *gin.Context) {
-			// Create a channel to communicate the result
-			resultCh := make(chan error)
-
-			// Respond immediately indicating that the stream is starting
-			c.JSON(http.StatusOK, gin.H{
-				"message": "Starting RTMP stream...",
-			})
-
+		rtmpStream.POST("/startStream", func(c *gin.Context) {
 			// Run StartRtmpStream asynchronously in a goroutine
 			go func() {
-				// This function runs in the background
-				err := ffmpegCmd.StartRtmpStream()
-				resultCh <- err
+				_, err := ffmpegCmd.StartRtmpStream()
+				if err != nil {
+					log.Printf("Error starting RTMP stream: %v\n", err)
+				}
 			}()
 
-			// Wait for the result from the channel
-			err := <-resultCh
-			if err != nil {
-				log.Printf("Error starting RTMP stream: %v\n", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error": "Failed to start RTMP stream",
+			// Immediately respond with a 202 status code
+			c.JSON(http.StatusAccepted, gin.H{
+				"message": "Starting RTMP stream...",
+			})
+		})
+		rtmpStream.GET("/checkStream", func(c *gin.Context) {
+			if ffmpegCmd.IsRtmpStreamRunning() {
+				log.Println(ffmpegCmd.IsRtmpStreamRunning())
+				// The stream is running
+				c.JSON(http.StatusOK, gin.H{
+					"message": "RTMP stream is running",
 				})
-				return
+			} else {
+				// The stream is not running
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error": "RTMP stream is not running",
+				})
 			}
 		})
 
-		rtmpStream.GET("/stopStream", func(c *gin.Context) {
-			if err := ffmpegCmd.StopRtmpStream(); err != nil {
+		rtmpStream.POST("/stopStream", func(c *gin.Context) {
+			err := ffmpegCmd.StopRtmpStream()
+			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error": err.Error(),
 				})

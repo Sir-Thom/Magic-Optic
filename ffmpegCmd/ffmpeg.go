@@ -12,8 +12,12 @@ import (
 
 var ffmpegCmd *exec.Cmd
 
+// TODO make a ffmpeg builder that can be used to build custom  ffmpeg commands
+// TODO make a ffmpeg  for rtsp streams
+// TODO make a ffmpeg  for srt streams (optional)
+// TODO make a way to change some of these settings from the web interface
 // StartRtmpStream starts the RTMP stream using FFmpeg
-func StartRtmpStream() error {
+func StartRtmpStream() (<-chan struct{}, error) {
 	cmd := exec.Command("ffmpeg",
 		"-f", "v4l2",
 		"-i", "/dev/video0",
@@ -33,19 +37,11 @@ func StartRtmpStream() error {
 	go func() {
 		err := cmd.Run()
 		if err != nil {
-			log.Printf("FFmpeg process terminated with error: %v\n", err)
-			var exitErr *exec.ExitError
-			if errors.As(err, &exitErr) {
-				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
-					// Handle the exit status if needed
-
-					log.Printf("Exit status: %d\n", status.ExitStatus())
-				}
-				close(stopCh) // Close the channel if there's an error
-				return
-			}
+			log.Println("FFmpeg process exited", err)
 		}
-
+		// Introduce a delay before updating ffmpegCmd.Process
+		time.Sleep(1 * time.Second)
+		ffmpegCmd = cmd // Save the command so we can terminate it later
 		close(stopCh)
 	}()
 
@@ -55,39 +51,46 @@ func StartRtmpStream() error {
 	signal.Notify(signalCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGKILL)
 	select {
 	case <-stopCh:
-		return nil
+		return stopCh, nil
+
 	case <-signalCh:
-		stopFFmpeg()
-		return errors.New("FFmpeg process timed out")
+		err := StopRtmpStream()
+		if err != nil {
+			return stopCh, err
+		}
+		close(signalCh)
+
 	}
+	<-stopCh
+	return stopCh, nil
 }
 
 func StopRtmpStream() error {
-	if ffmpegCmd != nil && ffmpegCmd.Process != nil {
-		log.Println("Stopping FFmpeg process...")
-		err := ffmpegCmd.Process.Signal(os.Interrupt)
-		if err != nil {
-			log.Println("Error stopping FFmpeg process:", err)
-			return err
-		}
-		return nil
+	// If the FFmpeg process is not running, return immediately
+	if ffmpegCmd == nil || ffmpegCmd.Process == nil || ffmpegCmd.ProcessState != nil && !ffmpegCmd.ProcessState.Exited() {
+		return errors.New("FFmpeg process is not running")
 	}
 
-	// If no FFmpeg process is running, return an error
-	return errors.New("No active RTMP stream to stop")
-}
-
-// stopFFmpeg forcefully terminates the FFmpeg process
-func stopFFmpeg() {
-	// Wait for a few seconds to give FFmpeg a chance to gracefully terminate
-	time.Sleep(5 * time.Second)
+	// Try to gracefully terminate the FFmpeg process
+	log.Println("Trying to gracefully terminate FFmpeg process...")
+	err := ffmpegCmd.Process.Signal(syscall.SIGTERM)
+	if err != nil {
+		log.Println("Error sending SIGTERM signal:", err)
+		return err
+	}
 
 	// If the FFmpeg process is still running, forcefully terminate it
-	if ffmpegCmd != nil && ffmpegCmd.Process != nil {
+	if !ffmpegCmd.ProcessState.Exited() {
 		log.Println("Forcefully terminating FFmpeg process...")
 		err := ffmpegCmd.Process.Kill()
 		if err != nil {
 			log.Println("Error forcefully terminating FFmpeg process:", err)
 		}
 	}
+
+	return nil
+}
+
+func IsRtmpStreamRunning() bool {
+	return ffmpegCmd != nil && ffmpegCmd.Process != nil
 }

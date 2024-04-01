@@ -36,10 +36,7 @@ func parseVideoDeviceOutput(output string) []VideoDevice {
 
 	for _, line := range lines {
 		if matches := devPathRegex.FindStringSubmatch(line); len(matches) > 0 {
-			// Lines starting with "/dev", add them to the current device
-
 			path := strings.TrimSpace(matches[0])
-
 			currentDevice.DevicePaths = append(currentDevice.DevicePaths, path)
 		} else if strings.HasSuffix(line, ":") {
 			// New device
