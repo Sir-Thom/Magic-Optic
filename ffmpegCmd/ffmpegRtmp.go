@@ -10,26 +10,33 @@ import (
 	"time"
 )
 
+type RtmpStreamConfig struct {
+	Device     string `json:"device"`
+	DevicePath string `json:"devicePath"`
+	VideoCodec string `json:"videoCodec"`
+	Preset     string `json:"preset"`
+	Tune       string `json:"tune"`
+	Bitrate    string `json:"bitrate"`
+	AudioCodec string `json:"audioCodec"`
+	RtmpUrl    string `json:"rtmpUrl"`
+}
+
 var ffmpegCmd *exec.Cmd
 
-// TODO make a ffmpeg builder that can be used to build custom  ffmpeg commands
-// TODO make a ffmpeg  for rtsp streams
-// TODO make a ffmpeg  for srt streams (optional)
-// TODO make a way to change some of these settings from the web interface
-// StartRtmpStream starts the RTMP stream using FFmpeg
-func StartRtmpStream() (<-chan struct{}, error) {
+func StartRtmpStream(config RtmpConfig) (<-chan struct{}, error) {
+	var currentConfig = config
 	cmd := exec.Command("ffmpeg",
 		"-f", "v4l2",
-		"-i", "/dev/video0",
-		"-c:v", "h264",
-		"-preset", "ultrafast",
-		"-tune", "zerolatency",
-		"-b:v", "900k",
-		"-c:a", "aac",
+		"-i", currentConfig.DevicePath,
+		"-c:v", currentConfig.VideoCodec,
+		"-preset", currentConfig.Preset,
+		"-tune", currentConfig.Tune,
+		"-b:v", currentConfig.Bitrate,
+		"-c:a", currentConfig.AudioCodec,
 		"-strict", "experimental",
 		"-f", "flv",
-		"rtmp://192.168.0.221:1935/live")
-
+		currentConfig.StreamUrl)
+	currentConfig.StreamType = "rtmp"
 	stopCh := make(chan struct{})
 
 	cmd.Stderr = os.Stderr
@@ -39,13 +46,12 @@ func StartRtmpStream() (<-chan struct{}, error) {
 		if err != nil {
 			log.Println("FFmpeg process exited", err)
 		}
-		// Introduce a delay before updating ffmpegCmd.Process
 		time.Sleep(1 * time.Second)
-		ffmpegCmd = cmd // Save the command so we can terminate it later
+		ffmpegCmd = cmd
 		close(stopCh)
 	}()
 
-	ffmpegCmd = cmd // save the command so we can terminate it later
+	ffmpegCmd = cmd
 	signalCh := make(chan os.Signal, 1)
 
 	signal.Notify(signalCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGKILL)
@@ -66,12 +72,10 @@ func StartRtmpStream() (<-chan struct{}, error) {
 }
 
 func StopRtmpStream() error {
-	// If the FFmpeg process is not running, return immediately
 	if ffmpegCmd == nil || ffmpegCmd.Process == nil || ffmpegCmd.ProcessState != nil && !ffmpegCmd.ProcessState.Exited() {
 		return errors.New("FFmpeg process is not running")
 	}
 
-	// Try to gracefully terminate the FFmpeg process
 	log.Println("Trying to gracefully terminate FFmpeg process...")
 	err := ffmpegCmd.Process.Signal(syscall.SIGTERM)
 	if err != nil {
@@ -79,7 +83,6 @@ func StopRtmpStream() error {
 		return err
 	}
 
-	// If the FFmpeg process is still running, forcefully terminate it
 	if !ffmpegCmd.ProcessState.Exited() {
 		log.Println("Forcefully terminating FFmpeg process...")
 		err := ffmpegCmd.Process.Kill()

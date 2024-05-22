@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-// VideoDevice represents a video device
 type VideoDevice struct {
 	Name        string   `json:"name"`
 	DevicePaths []string `json:"devicePaths"`
@@ -20,7 +19,6 @@ func listVideoDevices() ([]VideoDevice, error) {
 		return nil, fmt.Errorf("error running v4l2-ctl: %v", err)
 	}
 
-	// Parse the output and create a list of VideoDevice objects
 	devices := parseVideoDeviceOutput(string(output))
 
 	return devices, nil
@@ -47,10 +45,8 @@ func parseVideoDeviceOutput(output string) []VideoDevice {
 		}
 	}
 
-	// Add the last device
 	if currentDevice.Name != "" {
 		devices = append(devices, currentDevice)
 	}
-
 	return devices
 }
