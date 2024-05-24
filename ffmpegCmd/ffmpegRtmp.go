@@ -5,21 +5,8 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"os/signal"
 	"syscall"
-	"time"
 )
-
-type RtmpStreamConfig struct {
-	Device     string `json:"device"`
-	DevicePath string `json:"devicePath"`
-	VideoCodec string `json:"videoCodec"`
-	Preset     string `json:"preset"`
-	Tune       string `json:"tune"`
-	Bitrate    string `json:"bitrate"`
-	AudioCodec string `json:"audioCodec"`
-	RtmpUrl    string `json:"rtmpUrl"`
-}
 
 var ffmpegCmd *exec.Cmd
 
@@ -42,38 +29,25 @@ func StartRtmpStream(config RtmpConfig) (<-chan struct{}, error) {
 	cmd.Stderr = os.Stderr
 
 	go func() {
+		defer close(stopCh)
+
 		err := cmd.Run()
 		if err != nil {
 			log.Println("FFmpeg process exited", err)
 		}
-		time.Sleep(1 * time.Second)
-		ffmpegCmd = cmd
-		close(stopCh)
 	}()
 
 	ffmpegCmd = cmd
-	signalCh := make(chan os.Signal, 1)
-
-	signal.Notify(signalCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGKILL)
-	select {
-	case <-stopCh:
-		return stopCh, nil
-
-	case <-signalCh:
-		err := StopRtmpStream()
-		if err != nil {
-			return stopCh, err
-		}
-		close(signalCh)
-
-	}
-	<-stopCh
 	return stopCh, nil
 }
 
 func StopRtmpStream() error {
-	if ffmpegCmd == nil || ffmpegCmd.Process == nil || ffmpegCmd.ProcessState != nil && !ffmpegCmd.ProcessState.Exited() {
+	if ffmpegCmd == nil || ffmpegCmd.Process == nil {
 		return errors.New("FFmpeg process is not running")
+	}
+
+	if ffmpegCmd.ProcessState != nil && ffmpegCmd.ProcessState.Exited() {
+		return errors.New("FFmpeg process has already exited")
 	}
 
 	log.Println("Trying to gracefully terminate FFmpeg process...")
@@ -83,17 +57,21 @@ func StopRtmpStream() error {
 		return err
 	}
 
-	if !ffmpegCmd.ProcessState.Exited() {
-		log.Println("Forcefully terminating FFmpeg process...")
-		err := ffmpegCmd.Process.Kill()
-		if err != nil {
-			log.Println("Error forcefully terminating FFmpeg process:", err)
+	err = ffmpegCmd.Wait()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			// Process exited with a non-zero status
+			status := exitErr.Sys().(syscall.WaitStatus)
+			log.Printf("FFmpeg process exited with non-zero status: %d\n", status.ExitStatus())
+		} else {
+			log.Println("Error waiting for FFmpeg process to exit:", err)
+			return err
 		}
 	}
 
 	return nil
 }
-
-func IsRtmpStreamRunning() bool {
+func IsStreamRunning() bool {
 	return ffmpegCmd != nil && ffmpegCmd.Process != nil
 }

@@ -1,6 +1,6 @@
 package ffmpegCmd
 
-type HlsConfig struct {
+type RtmpConfig struct {
 	Device     string `json:"device"`
 	DevicePath string `json:"devicePath"`
 	VideoCodec string `json:"videoCodec"`
@@ -11,9 +11,7 @@ type HlsConfig struct {
 	StreamUrl  string `json:"streamUrl"`
 	StreamType string `json:"streamType"`
 }
-
-type RtmpConfig struct {
-	Device     string `json:"device"`
+type RtspConfig struct {
 	DevicePath string `json:"devicePath"`
 	VideoCodec string `json:"videoCodec"`
 	Preset     string `json:"preset"`

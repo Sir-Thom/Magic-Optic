@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"log"
 	"net/http"
+	"runtime"
 )
 
 func Main() {
@@ -25,6 +26,7 @@ func Main() {
 	}
 	stream := router.Group("/stream")
 	{
+
 		stream.POST("/startStream", func(c *gin.Context) {
 			var configMap map[string]interface{}
 			if err := c.ShouldBindJSON(&configMap); err != nil {
@@ -40,8 +42,8 @@ func Main() {
 
 			var streamConfig interface{}
 			switch streamType := configMap["streamType"].(string); streamType {
-			case "hls":
-				var hlsCfg ffmpegCmd.HlsConfig
+			case "rtsp":
+				var hlsCfg ffmpegCmd.RtspConfig
 				if err := json.Unmarshal(configJSON, &hlsCfg); err != nil {
 					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 					return
@@ -61,13 +63,13 @@ func Main() {
 
 			go func() {
 				switch cfg := streamConfig.(type) {
-				case ffmpegCmd.HlsConfig:
-					_, err := ffmpegCmd.StartHlsStream(cfg)
+				case ffmpegCmd.RtspConfig:
+					_, err := ffmpegCmd.StartRtspStream(ffmpegCmd.RtspConfig(cfg))
 					if err != nil {
 						log.Printf("Error starting HLS stream: %v\n", err)
 					}
 				case ffmpegCmd.RtmpConfig:
-					_, err := ffmpegCmd.StartRtmpStream(cfg)
+					_, err := ffmpegCmd.StartRtmpStream(ffmpegCmd.RtmpConfig(cfg))
 					if err != nil {
 						log.Printf("Error starting RTMP stream: %v\n", err)
 					}
@@ -90,7 +92,8 @@ func Main() {
 		})
 
 		stream.POST("/stopStream", func(c *gin.Context) {
-			err := ffmpegCmd.StopStream()
+
+			err := ffmpegCmd.StopRtmpStream()
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error": err.Error(),
@@ -102,7 +105,15 @@ func Main() {
 				"message": "Stream stopping...",
 			})
 		})
+		stream.GET("/debug", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"message": runtime.NumGoroutine(),
+			})
+			log.Println(runtime.NumGoroutine())
+		})
+
 	}
+
 	err := router.Run()
 	if err != nil {
 		log.Fatal(err)
