@@ -2,13 +2,16 @@ package api
 
 import (
 	"Magic-optic/ffmpegCmd"
+	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"log"
 	"net/http"
+	"runtime"
 )
 
 func Main() {
 	router := gin.Default()
+	streamManager := ffmpegCmd.NewStreamManager()
 	device := router.Group("/device")
 	{
 		device.GET("/getDevices", func(c *gin.Context) {
@@ -22,37 +25,91 @@ func Main() {
 			c.JSON(http.StatusOK, devices)
 		})
 	}
-	rtmpStream := router.Group("/rtmpStream")
+
+	codecs := router.Group("/codecs")
 	{
-		rtmpStream.GET("/startStream", func(c *gin.Context) {
-			// Create a channel to communicate the result
-			resultCh := make(chan error)
-
-			// Respond immediately indicating that the stream is starting
-			c.JSON(http.StatusOK, gin.H{
-				"message": "Starting RTMP stream...",
-			})
-
-			// Run StartRtmpStream asynchronously in a goroutine
-			go func() {
-				// This function runs in the background
-				err := ffmpegCmd.StartRtmpStream()
-				resultCh <- err
-			}()
-
-			// Wait for the result from the channel
-			err := <-resultCh
+		codecs.GET("/getAudioCodecs", func(c *gin.Context) {
+			audioCodecs, err := getAudioCodecs()
 			if err != nil {
-				log.Printf("Error starting RTMP stream: %v\n", err)
 				c.JSON(http.StatusInternalServerError, gin.H{
-					"error": "Failed to start RTMP stream",
+					"error": err.Error(),
 				})
 				return
 			}
+			c.JSON(http.StatusOK, audioCodecs)
+
+		})
+	}
+
+	stream := router.Group("/stream")
+	{
+		stream.POST("startStream", func(c *gin.Context) {
+			var configMap map[string]interface{}
+			if err := c.ShouldBindJSON(&configMap); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+
+			configJSON, err := json.Marshal(configMap)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			var streamConfig ffmpegCmd.StreamConfig
+			switch streamType := configMap["streamType"].(string); streamType {
+			case "rtsp":
+				var rtspConfig ffmpegCmd.RtspConfig
+				if err := json.Unmarshal(configJSON, &rtspConfig); err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					return
+				}
+				streamConfig = rtspConfig
+			case "rtmp":
+				var rtmpConfig ffmpegCmd.RtmpConfig
+				if err := json.Unmarshal(configJSON, &rtmpConfig); err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					return
+				}
+				streamConfig = rtmpConfig
+			default:
+				c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported stream type"})
+				return
+			}
+
+			id, _, err := streamManager.StartStream(streamConfig)
+			if err != nil {
+				log.Printf("Error starting stream: %v\n", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			c.JSON(http.StatusAccepted, gin.H{"message": "Starting stream...", "streamID": id})
 		})
 
-		rtmpStream.GET("/stopStream", func(c *gin.Context) {
-			if err := ffmpegCmd.StopRtmpStream(); err != nil {
+		stream.GET("/checkAllStream", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"message": streamManager.CheckAllStream(),
+			})
+		})
+
+		stream.GET("/checkStream/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			if streamManager.IsStreamRunning(id) {
+				c.JSON(http.StatusOK, gin.H{
+					"message": "Stream is running",
+				})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error": "Stream is not running",
+				})
+			}
+		})
+
+		stream.POST("/stopStream/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			err := streamManager.StopStream(id)
+			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error": err.Error(),
 				})
@@ -60,8 +117,15 @@ func Main() {
 			}
 
 			c.JSON(http.StatusOK, gin.H{
-				"message": "RTMP stream stopping...",
+				"message": "Stream stopping...",
 			})
+		})
+
+		router.GET("/debug", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"message": runtime.NumGoroutine(),
+			})
+			log.Println(runtime.NumGoroutine())
 		})
 	}
 
