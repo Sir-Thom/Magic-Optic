@@ -1,7 +1,7 @@
 package api
 
 import (
-	"Magic-optic/ffmpegCmd" // Import the ffmpegCmd package
+	"Magic-optic/ffmpegCmd"
 	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"log"
@@ -11,6 +11,7 @@ import (
 
 func Main() {
 	router := gin.Default()
+	streamManager := ffmpegCmd.NewStreamManager()
 	device := router.Group("/device")
 	{
 		device.GET("/getDevices", func(c *gin.Context) {
@@ -24,10 +25,25 @@ func Main() {
 			c.JSON(http.StatusOK, devices)
 		})
 	}
+
+	codecs := router.Group("/codecs")
+	{
+		codecs.GET("/getAudioCodecs", func(c *gin.Context) {
+			audioCodecs, err := getAudioCodecs()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error": err.Error(),
+				})
+				return
+			}
+			c.JSON(http.StatusOK, audioCodecs)
+
+		})
+	}
+
 	stream := router.Group("/stream")
 	{
-
-		stream.POST("/startStream", func(c *gin.Context) {
+		stream.POST("startStream", func(c *gin.Context) {
 			var configMap map[string]interface{}
 			if err := c.ShouldBindJSON(&configMap); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -40,47 +56,46 @@ func Main() {
 				return
 			}
 
-			var streamConfig interface{}
+			var streamConfig ffmpegCmd.StreamConfig
 			switch streamType := configMap["streamType"].(string); streamType {
 			case "rtsp":
-				var hlsCfg ffmpegCmd.RtspConfig
-				if err := json.Unmarshal(configJSON, &hlsCfg); err != nil {
+				var rtspConfig ffmpegCmd.RtspConfig
+				if err := json.Unmarshal(configJSON, &rtspConfig); err != nil {
 					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 					return
 				}
-				streamConfig = hlsCfg
+				streamConfig = rtspConfig
 			case "rtmp":
-				var rtmpCfg ffmpegCmd.RtmpConfig
-				if err := json.Unmarshal(configJSON, &rtmpCfg); err != nil {
+				var rtmpConfig ffmpegCmd.RtmpConfig
+				if err := json.Unmarshal(configJSON, &rtmpConfig); err != nil {
 					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 					return
 				}
-				streamConfig = rtmpCfg
+				streamConfig = rtmpConfig
 			default:
 				c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported stream type"})
 				return
 			}
 
-			go func() {
-				switch cfg := streamConfig.(type) {
-				case ffmpegCmd.RtspConfig:
-					_, err := ffmpegCmd.StartRtspStream(ffmpegCmd.RtspConfig(cfg))
-					if err != nil {
-						log.Printf("Error starting HLS stream: %v\n", err)
-					}
-				case ffmpegCmd.RtmpConfig:
-					_, err := ffmpegCmd.StartRtmpStream(ffmpegCmd.RtmpConfig(cfg))
-					if err != nil {
-						log.Printf("Error starting RTMP stream: %v\n", err)
-					}
-				}
-			}()
+			id, _, err := streamManager.StartStream(streamConfig)
+			if err != nil {
+				log.Printf("Error starting stream: %v\n", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
 
-			c.JSON(http.StatusAccepted, gin.H{"message": "Starting stream..."})
+			c.JSON(http.StatusAccepted, gin.H{"message": "Starting stream...", "streamID": id})
 		})
 
-		stream.GET("/checkStream", func(c *gin.Context) {
-			if ffmpegCmd.IsStreamRunning() {
+		stream.GET("/checkAllStream", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"message": streamManager.CheckAllStream(),
+			})
+		})
+
+		stream.GET("/checkStream/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			if streamManager.IsStreamRunning(id) {
 				c.JSON(http.StatusOK, gin.H{
 					"message": "Stream is running",
 				})
@@ -91,9 +106,9 @@ func Main() {
 			}
 		})
 
-		stream.POST("/stopStream", func(c *gin.Context) {
-
-			err := ffmpegCmd.StopRtmpStream()
+		stream.POST("/stopStream/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			err := streamManager.StopStream(id)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error": err.Error(),
@@ -105,13 +120,13 @@ func Main() {
 				"message": "Stream stopping...",
 			})
 		})
-		stream.GET("/debug", func(c *gin.Context) {
+
+		router.GET("/debug", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"message": runtime.NumGoroutine(),
 			})
 			log.Println(runtime.NumGoroutine())
 		})
-
 	}
 
 	err := router.Run()
