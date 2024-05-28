@@ -1,7 +1,8 @@
 package api
 
 import (
-	"Magic-optic/ffmpegCmd"
+	"Magic-optic/api/utils"
+	"Magic-optic/stream"
 	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"log"
@@ -11,11 +12,11 @@ import (
 
 func Main() {
 	router := gin.Default()
-	streamManager := ffmpegCmd.NewStreamManager()
+	streamManager := stream.NewStreamManager()
 	device := router.Group("/device")
 	{
-		device.GET("/getDevices", func(c *gin.Context) {
-			devices, err := listVideoDevices()
+		device.GET("", func(c *gin.Context) {
+			devices, err := utils.ListVideoDevices()
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error": err.Error(),
@@ -28,8 +29,8 @@ func Main() {
 
 	codecs := router.Group("/codecs")
 	{
-		codecs.GET("/getAudioCodecs", func(c *gin.Context) {
-			audioCodecs, err := getAudioCodecs()
+		codecs.GET("/audio", func(c *gin.Context) {
+			audioCodecs, err := utils.GetAudioCodecs()
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error": err.Error(),
@@ -37,13 +38,23 @@ func Main() {
 				return
 			}
 			c.JSON(http.StatusOK, audioCodecs)
+		})
 
+		codecs.GET("/video", func(c *gin.Context) {
+			videoCodecs, err := utils.GeVideoCodecs()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error": err.Error(),
+				})
+				return
+			}
+			c.JSON(http.StatusOK, videoCodecs)
 		})
 	}
 
-	stream := router.Group("/stream")
+	streaming := router.Group("/stream")
 	{
-		stream.POST("startStream", func(c *gin.Context) {
+		streaming.POST("startStream", func(c *gin.Context) {
 			var configMap map[string]interface{}
 			if err := c.ShouldBindJSON(&configMap); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -56,17 +67,17 @@ func Main() {
 				return
 			}
 
-			var streamConfig ffmpegCmd.StreamConfig
+			var streamConfig stream.ConfigStream
 			switch streamType := configMap["streamType"].(string); streamType {
 			case "rtsp":
-				var rtspConfig ffmpegCmd.RtspConfig
+				var rtspConfig stream.RtspConfig
 				if err := json.Unmarshal(configJSON, &rtspConfig); err != nil {
 					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 					return
 				}
 				streamConfig = rtspConfig
 			case "rtmp":
-				var rtmpConfig ffmpegCmd.RtmpConfig
+				var rtmpConfig stream.RtmpConfig
 				if err := json.Unmarshal(configJSON, &rtmpConfig); err != nil {
 					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 					return
@@ -87,13 +98,13 @@ func Main() {
 			c.JSON(http.StatusAccepted, gin.H{"message": "Starting stream...", "streamID": id})
 		})
 
-		stream.GET("/checkAllStream", func(c *gin.Context) {
+		streaming.GET("/checkAllStream", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"message": streamManager.CheckAllStream(),
 			})
 		})
 
-		stream.GET("/checkStream/:id", func(c *gin.Context) {
+		streaming.GET("/checkStream/:id", func(c *gin.Context) {
 			id := c.Param("id")
 			if streamManager.IsStreamRunning(id) {
 				c.JSON(http.StatusOK, gin.H{
@@ -106,7 +117,7 @@ func Main() {
 			}
 		})
 
-		stream.POST("/stopStream/:id", func(c *gin.Context) {
+		streaming.POST("/stopStream/:id", func(c *gin.Context) {
 			id := c.Param("id")
 			err := streamManager.StopStream(id)
 			if err != nil {
@@ -121,7 +132,7 @@ func Main() {
 			})
 		})
 
-		router.GET("/debug", func(c *gin.Context) {
+		streaming.GET("/debug", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"message": runtime.NumGoroutine(),
 			})

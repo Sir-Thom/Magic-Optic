@@ -4,8 +4,6 @@ LABEL authors="thomas"
 # Install ffmpeg v4l-utils
 RUN apk add --no-cache ffmpeg v4l-utils
 
-
-
 WORKDIR /app
 
 # Download Go modules
