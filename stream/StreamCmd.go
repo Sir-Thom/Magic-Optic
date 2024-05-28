@@ -1,17 +1,16 @@
-package ffmpegCmd
+package stream
 
 import (
 	"errors"
+	"github.com/google/uuid"
 	"log"
 	"os"
 	"os/exec"
 	"sync"
 	"syscall"
-
-	"github.com/google/uuid"
 )
 
-type StreamConfig interface {
+type ConfigStream interface {
 	Command() *exec.Cmd
 }
 
@@ -21,18 +20,18 @@ type Stream struct {
 	stopCh chan struct{}
 }
 
-type StreamManager struct {
+type ManagerStream struct {
 	streams map[string]*Stream
 	mu      sync.Mutex
 }
 
-func NewStreamManager() *StreamManager {
-	return &StreamManager{
+func NewStreamManager() *ManagerStream {
+	return &ManagerStream{
 		streams: make(map[string]*Stream),
 	}
 }
 
-func (sm *StreamManager) StartStream(config StreamConfig) (string, <-chan struct{}, error) {
+func (sm *ManagerStream) StartStream(config ConfigStream) (string, <-chan struct{}, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -62,7 +61,7 @@ func (sm *StreamManager) StartStream(config StreamConfig) (string, <-chan struct
 	return id, stopCh, nil
 }
 
-func (sm *StreamManager) StopStream(id string) error {
+func (sm *ManagerStream) StopStream(id string) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -100,7 +99,7 @@ func (sm *StreamManager) StopStream(id string) error {
 	return nil
 }
 
-func (sm *StreamManager) IsStreamRunning(id string) bool {
+func (sm *ManagerStream) IsStreamRunning(id string) bool {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -111,7 +110,7 @@ func (sm *StreamManager) IsStreamRunning(id string) bool {
 	return stream.cmd.Process != nil
 }
 
-func (sm *StreamManager) CheckAllStream() map[string]*Stream {
+func (sm *ManagerStream) CheckAllStream() map[string]*Stream {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 

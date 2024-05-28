@@ -1,4 +1,4 @@
-package api
+package utils
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ type VideoDevice struct {
 	DevicePaths []string `json:"devicePaths"`
 }
 
-func listVideoDevices() ([]VideoDevice, error) {
+func ListVideoDevices() ([]VideoDevice, error) {
 	cmd := exec.Command("/usr/bin/v4l2-ctl", "--list-devices")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
