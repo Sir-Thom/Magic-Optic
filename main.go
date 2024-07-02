@@ -8,8 +8,6 @@ import (
 func main() {
 	checkCommand("ffmpeg", "-version", "FFmpeg is not installed please install it")
 	checkCommand("/usr/bin/v4l2-ctl", "--version", "v4l2-ctl is not installed please install it")
-	checkCommand("/usr/bin/v4l2-ctl", "--list-devices", "Camera is not connected")
-	checkCommand("/usr/bin/v4l2-ctl", "--list-formats-ext", "Camera is not supported")
 
 	api.Main()
 }

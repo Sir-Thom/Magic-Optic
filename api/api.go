@@ -87,8 +87,9 @@ func Main() {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported stream type"})
 				return
 			}
-
-			id, _, err := streamManager.StartStream(streamConfig)
+			// Check if the stream is for Raspberry Pi
+			raspberrypi, _ := configMap["raspberrypi"].(bool)
+			id, _, err := streamManager.StartStream(streamConfig, raspberrypi)
 			if err != nil {
 				log.Printf("Error starting stream: %v\n", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

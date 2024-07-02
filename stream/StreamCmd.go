@@ -11,7 +11,7 @@ import (
 )
 
 type ConfigStream interface {
-	Command() *exec.Cmd
+	Command(raspberrypi bool) *exec.Cmd
 }
 
 type Stream struct {
@@ -31,7 +31,7 @@ func NewStreamManager() *ManagerStream {
 	}
 }
 
-func (sm *ManagerStream) StartStream(config ConfigStream) (string, <-chan struct{}, error) {
+func (sm *ManagerStream) StartStream(config ConfigStream, raspberrypi bool) (string, <-chan struct{}, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -40,7 +40,7 @@ func (sm *ManagerStream) StartStream(config ConfigStream) (string, <-chan struct
 		return "", nil, errors.New("stream with this ID already exists")
 	}
 
-	cmd := config.Command()
+	cmd := config.Command(raspberrypi)
 	stopCh := make(chan struct{})
 
 	cmd.Stderr = os.Stderr

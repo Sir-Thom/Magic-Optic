@@ -13,8 +13,9 @@ type RtmpConfig struct {
 	StreamUrl         string `json:"streamUrl"`
 }
 
-func (config RtmpConfig) Command() *exec.Cmd {
-	return exec.Command("ffmpeg",
+func (config RtmpConfig) Command(raspberrypi bool) *exec.Cmd {
+	ffmpegArgs := []string{
+
 		"-f", "v4l2",
 		"-i", config.DevicePath,
 		"-c:v", config.VideoCodec,
@@ -26,7 +27,14 @@ func (config RtmpConfig) Command() *exec.Cmd {
 		"-f", config.VideoFormatOutput,
 		"-flvflags", "no_duration_filesize",
 		"-max_muxing_queue_size", "9999",
-		config.StreamUrl)
+		config.StreamUrl,
+	}
+	if raspberrypi {
+		ffmpegArgs = append([]string{"libcamerify"}, ffmpegArgs...)
+	}
+
+	return exec.Command("ffmpeg", ffmpegArgs...)
+
 }
 
 type RtspConfig struct {
@@ -40,8 +48,8 @@ type RtspConfig struct {
 	StreamUrl         string `json:"streamUrl"`
 }
 
-func (config RtspConfig) Command() *exec.Cmd {
-	return exec.Command("ffmpeg",
+func (config RtspConfig) Command(raspberrypi bool) *exec.Cmd {
+	ffmpegArgs := []string{
 		"-f", "v4l2",
 		"-i", config.DevicePath,
 		"-c:v", config.VideoCodec,
@@ -53,5 +61,12 @@ func (config RtspConfig) Command() *exec.Cmd {
 		"-f", config.VideoFormatOutput,
 		"-flvflags", "no_duration_filesize",
 		"-max_muxing_queue_size", "9999",
-		config.StreamUrl)
+		config.StreamUrl,
+	}
+
+	if raspberrypi {
+		ffmpegArgs = append([]string{"libcamerify"}, ffmpegArgs...)
+	}
+
+	return exec.Command("ffmpeg", ffmpegArgs...)
 }
